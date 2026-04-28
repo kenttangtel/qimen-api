@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>奇門遁甲排盤預覽</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .wx-wood { color: #16a34a; }   
+        .wx-fire { color: #dc2626; }   
+        .wx-earth { color: #8B4513; }  
+        .wx-metal { color: #f59e0b; }  
+        .wx-water { color: #2563eb; }  
+        .wx-none { color: #4b5563; }   
+
+        .qimen-grid {
+            display: grid;
+            grid-template-areas: "巽 離 坤" "震 中 兌" "艮 坎 乾";
+            gap: 0.5rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .palace-card {
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            background: #ffffff;
+            min-height: 115px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .bg-center { background-color: #fef3c7; }
+        
+        .cell-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            grid-template-rows: auto auto auto;
+            flex-grow: 1;
+            align-items: center;
+        }
+        /* 💡 左上角只保留 O 與 🐎 */
+        .marks-container { grid-column: 1; grid-row: 1; display: flex; flex-wrap: wrap; gap: 2px; font-size: 0.75rem; font-weight: bold; align-self: start; max-width: 45px;}
+        .mark-empty { color: #9ca3af; }
+        .mark-tomb { color: #16a34a; } /* 入墓: 綠色 */
+        .mark-forced { color: #dc2626; } /* 門迫: 紅色 */
+        .mark-punished { color: #ea580c; } /* 擊刑: 橘色 */
+        .mark-punished-tomb { color: #9333ea; } /* 刑墓: 紫色 */
+
+        .deity { grid-column: 2; grid-row: 1; text-align: center; font-weight: bold; font-size: 0.85rem; }
+        .hidden-stem { grid-column: 1; grid-row: 2; text-align: left; font-weight: bold; font-size: 1.1rem; }
+        .star { grid-column: 2; grid-row: 2; text-align: center; font-weight: bold; font-size: 0.95rem; }
+        .heaven-stem-wrapper { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+        .earth-stem-wrapper { grid-column: 3; grid-row: 3; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; justify-content: flex-end; padding-top: 4px; }
+        .state-txt { font-size: 0.6rem; color: #9ca3af; letter-spacing: 0.5px; margin-bottom: 2px;}
+        
+        /* 讓標記可以和天干或八門並排顯示 */
+        .stem-txt { font-weight: bold; font-size: 1.1rem; display: flex; align-items: center;}
+        
+        .palace-num { grid-column: 1; grid-row: 3; text-align: left; color: #9ca3af; font-size: 0.9rem; align-self: end; padding-bottom: 2px;}
+        .door { grid-column: 2; grid-row: 3; text-align: center; font-weight: bold; font-size: 0.95rem; align-self: end; display: flex; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6 text-center text-indigo-700">🔮 奇門遁甲視覺化儀表板</h1>
+
+        <!-- 控制面板 -->
+        <div class="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap justify-center gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">精確時間</label>
+                <input type="datetime-local" id="timeInput" class="border p-2 rounded w-64">
+            </div>
+            <button onclick="fetchData()" class="bg-indigo-600 text-white px-6 py-2 rounded font-bold hover:bg-indigo-700 transition shadow-sm">
+                排盤計算
+            </button>
+            <!-- AI 解盤按鈕 -->
+            <button id="aiBtn" onclick="fetchAI()" class="hidden bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white px-6 py-2 rounded font-bold hover:from-purple-700 hover:to-fuchsia-700 transition shadow-md flex items-center gap-2">
+                <span>一鍵解盤</span>
+                <svg id="aiSpinner" class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </button>
+        </div>
+
+        <!-- AI 報告顯示區塊 -->
+        <div id="aiResultBox" class="hidden mb-6 bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-200 rounded-lg p-6 shadow-sm">
+            <div id="aiContent" class="prose prose-purple max-w-none text-gray-800 leading-relaxed whitespace-pre-line"></div>
+        </div>
+
+        <!-- 基本資訊顯示區 -->
+        <div id="infoBox" class="bg-white border-t-4 border-indigo-600 shadow-sm p-5 rounded-lg mb-6 hidden">
+            <div class="flex flex-col md:flex-row gap-8 items-center justify-center">
+                <div class="text-center font-bold bg-gray-50 p-3 rounded border border-gray-100">
+                    <table class="mx-auto border-separate" style="border-spacing: 0.8rem 0.2rem;">
+                        <thead>
+                            <tr class="text-gray-400 text-sm font-normal"><th>年</th><th>月</th><th>日</th><th>時</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr id="baziStems" class="text-xl"></tr>
+                            <tr id="baziBranches" class="text-xl"></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-sm border-l-2 border-gray-200 pl-6 leading-relaxed">
+                    <p><strong>選局：</strong> <span id="qimenDesc" class="text-indigo-700 font-bold"></span></p>
+                    <p><strong>旬首：</strong> <span id="hourXun"></span></p>
+                    <p><strong>值符：</strong> <span id="zhiFu"></span></p>
+                    <p><strong>值使：</strong> <span id="zhiShi"></span></p>
+                    <p><strong>局勢：</strong> 轉盤-拆補</p>
+                    <p><strong>空亡：</strong> <span id="dayEmpty"></span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 九宮格顯示區 -->
+        <div id="gridContainer" class="qimen-grid hidden"></div>
+        
+        <!-- 💡 底部解說區塊 -->
+        <div id="legendBox" class="mt-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200 text-sm text-gray-600 font-medium hidden flex flex-wrap gap-4 justify-center">
+            <span>解說：</span>
+            <span><span class="mark-empty">O</span> 空亡</span>
+            <span>🐎 驛馬</span>
+            <span><span class="mark-tomb">(墓)</span> 入墓</span>
+            <span><span class="mark-forced">(迫)</span> 門迫</span>
+            <span><span class="mark-punished">(刑)</span> 擊刑</span>
+            <span><span class="mark-punished-tomb">(刑墓)</span> 同時擊刑和入墓</span>
+        </div>
+    </div>
+
+    <script>
+        const areaMap = { "巽宮":"巽", "離宮":"離", "坤宮":"坤", "震宮":"震", "中宮":"中", "兌宮":"兌", "艮宮":"艮", "坎宮":"坎", "乾宮":"乾" };
+        const numMap = { "坎宮":1, "坤宮":2, "震宮":3, "巽宮":4, "中宮":5, "乾宮":6, "兌宮":7, "艮宮":8, "離宮":9 };
+
+        function getWuxingClass(name) {
+            if (!name) return 'wx-none';
+            if (/[甲乙寅卯傷杜六]/.test(name)) return 'wx-wood';
+            if (/[丙丁巳午景英蛇]/.test(name)) return 'wx-fire';
+            if (/[戊己辰戌丑未生死禽芮任符地]/.test(name)) return 'wx-earth';
+            if (/[庚辛申酉驚開心柱陰虎天]/.test(name)) return 'wx-metal';
+            if (/[壬癸亥子休蓬武]/.test(name)) return 'wx-water';
+            return 'wx-none';
+        }
+
+        function colorizeStem(text) {
+            if (!text) return '';
+            return text.split('').map(char => `<span class="${getWuxingClass(char)}">${char}</span>`).join('');
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const now = new Date();
+            const offset = now.getTimezoneOffset() * 60000;
+            const localISOTime = (new Date(now - offset)).toISOString().slice(0, 16);
+            document.getElementById('timeInput').value = localISOTime;
+        });
+
+        async function fetchData() {
+            const rawTime = document.getElementById('timeInput').value;
+            const payload = { time: rawTime.replace('T', ' '), lat: 22.3, lon: 114.1, gender: "M" };
+
+            try {
+                const response = await fetch('/api/v1/divination/calculate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('API Request Failed');
+                
+                document.getElementById('aiBtn').classList.remove('hidden');
+                document.getElementById('aiResultBox').classList.add('hidden');
+                
+                renderUI(await response.json());
+            } catch (error) {
+                alert("連線錯誤：" + error);
+            }
+        }
+
+        async function fetchAI() {
+            const btn = document.getElementById('aiBtn');
+            const spinner = document.getElementById('aiSpinner');
+            const resultBox = document.getElementById('aiResultBox');
+            const contentDiv = document.getElementById('aiContent');
+            
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+            
+            const rawTime = document.getElementById('timeInput').value;
+            const payload = { time: rawTime.replace('T', ' '), lat: 22.3, lon: 114.1, gender: "M" };
+
+            try {
+                const response = await fetch('/api/v1/divination/interpret', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('AI Request Failed');
+                
+                const data = await response.json();
+                contentDiv.innerHTML = data.text;
+                resultBox.classList.remove('hidden');
+            } catch (error) {
+                alert("AI 解盤錯誤：" + error);
+            } finally {
+                btn.disabled = false;
+                spinner.classList.add('hidden');
+            }
+        }
+
+        function renderUI(data) {
+            document.getElementById('infoBox').classList.remove('hidden');
+            document.getElementById('gridContainer').classList.remove('hidden');
+            document.getElementById('legendBox').classList.remove('hidden');
+
+            document.getElementById('qimenDesc').textContent = data.qimen_info.description;
+            document.getElementById('hourXun').textContent = data.qimen_info.hour_xun;
+            document.getElementById('zhiFu').textContent = data.qimen_info.zhi_fu;
+            document.getElementById('zhiShi').textContent = data.qimen_info.zhi_shi;
+            document.getElementById('dayEmpty').textContent = data.bazi.day_empty;
+            
+            const bazi = data.bazi;
+            const baziList = [bazi.year, bazi.month, bazi.day, bazi.hour];
+            let stemsHtml = '', branchesHtml = '';
+            baziList.forEach(bz => {
+                const stem = bz.charAt(0), branch = bz.charAt(1);
+                stemsHtml += `<td class="${getWuxingClass(stem)}">${stem}</td>`;
+                branchesHtml += `<td class="${getWuxingClass(branch)}">${branch}</td>`;
+            });
+            document.getElementById('baziStems').innerHTML = stemsHtml;
+            document.getElementById('baziBranches').innerHTML = branchesHtml;
+
+            const grid = document.getElementById('gridContainer');
+            grid.innerHTML = ''; 
+
+            data.qimen_matrix.forEach(palace => {
+                const area = areaMap[palace.palace_id];
+                const isCenter = palace.palace_id === "中宮" ? "bg-center" : "";
+                const states = palace.logic_states;
+                
+                let marksHtml = '';
+                if(states.is_empty) marksHtml += `<span class="mark-empty">O</span>`;
+                if(states.is_horse) marksHtml += `<span>🐎</span>`;
+                
+                // 動態產生天干右側的標記 HTML
+                function getTagSpan(tag) {
+                    if (!tag) return '';
+                    if (tag.includes('刑墓')) return `<span class="mark-punished-tomb text-[0.7rem] font-bold ml-0.5">${tag}</span>`;
+                    if (tag.includes('刑')) return `<span class="mark-punished text-[0.7rem] font-bold ml-0.5">${tag}</span>`;
+                    if (tag.includes('墓')) return `<span class="mark-tomb text-[0.7rem] font-bold ml-0.5">${tag}</span>`;
+                    return '';
+                }
+
+                // 門迫標記
+                const doorForcedHtml = states.is_door_forced ? `<span class="mark-forced text-[0.7rem] font-bold ml-0.5">(迫)</span>` : '';
+
+                const cardHtml = `
+                    <div class="palace-card ${isCenter}" style="grid-area: ${area};">
+                        <div class="cell-grid">
+                            <!-- 💡 O 與 🐎 定位於左上角 -->
+                            <div class="marks-container">${marksHtml}</div>
+                            
+                            <div class="deity ${getWuxingClass(palace.deity)}">${palace.deity}</div>
+                            <div class="hidden-stem">${colorizeStem(palace.hidden_stem)}</div>
+                            <div class="star ${getWuxingClass(palace.star)}">${palace.star.replace('星','')}</div>
+                            <div class="heaven-stem-wrapper">
+                                <span class="state-txt">${palace.heaven_stem_state}</span>
+                                <span class="stem-txt">${colorizeStem(palace.heaven_stem)}${getTagSpan(palace.heaven_stem_tags)}</span>
+                            </div>
+                            
+                            <!-- 💡 宮位數字獨立在左下角 -->
+                            <div class="palace-num">${numMap[palace.palace_id]}</div>
+                            
+                            <div class="door ${getWuxingClass(palace.door)}">
+                                <span>${palace.door}</span>${doorForcedHtml}
+                            </div>
+                            <div class="earth-stem-wrapper">
+                                <span class="state-txt">${palace.earth_stem_state}</span>
+                                <span class="stem-txt">${colorizeStem(palace.earth_stem)}${getTagSpan(palace.earth_stem_tags)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                grid.innerHTML += cardHtml;
+            });
+        }
+    </script>
+</body>
+</html>
+
+
+```
